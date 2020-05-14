@@ -55,6 +55,10 @@ The current ones you might configure are:
   // Android Studio install path, but you may change it manually.
   "windowsAndroidStudioPath": "C:\Program Files\Android\Android Studio\bin\studio64.exe",
 
+  // A Boolean value that determines whether to hide native logs for iOS and Android. The preference is ignored if it's also declared inside ios or android
+  // Default is false
+  "hideLogs": true
+
   // Server object contains port and url configurations 
   "server": {
     // You can make the app to load an external url (i.e. to live reload)
@@ -101,7 +105,11 @@ The current ones you might configure are:
     // any WebViews of this application.
     // This flag can be enabled in order to facilitate debugging of web layouts
     // and JavaScript code running inside WebViews.
-    "webContentsDebuggingEnabled": true
+    "webContentsDebuggingEnabled": true,
+
+    // A Boolean value that determines whether to hide native Android logs or not
+    // Default is false
+    "hideLogs": true
   },
   "ios": {
     // User agent of Capacitor WebView for iOS
@@ -110,14 +118,26 @@ The current ones you might configure are:
     "appendUserAgent": "string to append for iOS",
     // Background color of Capacitor WebView for iOS only
     "backgroundColor": "#ffffffff",
+    // Configure the WebView's UIScrollView's content inset behavior
+    // Default is never
+    // Possible values are "automatic", "scrollableAxes", "never" and "always"
+    // https://developer.apple.com/documentation/uikit/uiscrollview/contentinsetadjustmentbehavior
+    "contentInset": "always",
     // Configure the Swift version to be used for Cordova plugins.
-    // Default is 4.0
-    "cordovaSwiftVersion": "3.0",
+    // Default is 5.0
+    "cordovaSwiftVersion": "4.2",
     // Minimum iOS version supported by the project.
     // Default is 11.0
     "minVersion": "11.3",
     // Some Cordova plugins require to configure the linker flags
-    "cordovaLinkerFlags": ["-ObjC"]
+    "cordovaLinkerFlags": ["-ObjC"],
+    // A Boolean value that determines whether pressing on a link displays a preview of
+    // the destination for the link.
+    "allowsLinkPreview": false,
+
+    // A Boolean value that determines whether to hide native iOS logs or not
+    // Default is false
+    "hideLogs": true
   },
   "electron": {
     // User agent of Capacitor WebView for Electron

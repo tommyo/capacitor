@@ -1,6 +1,7 @@
 import { WebPlugin } from './index';
 
 import {
+  DeviceBatteryInfo,
   DeviceInfo,
   DevicePlugin,
   DeviceLanguageCodeResult
@@ -21,6 +22,21 @@ export class DevicePluginWeb extends WebPlugin implements DevicePlugin {
   async getInfo(): Promise<DeviceInfo> {
     const ua = navigator.userAgent;
     const uaFields = this.parseUa(ua);
+
+    return Promise.resolve({
+      model: uaFields.model,
+      platform: <'web'> 'web',
+      appVersion: '',
+      appBuild: '',
+      operatingSystem: uaFields.operatingSystem,
+      osVersion: uaFields.osVersion,
+      manufacturer: navigator.vendor,
+      isVirtual: false,
+      uuid: this.getUid()
+    });
+  }
+
+  async getBatteryInfo(): Promise<DeviceBatteryInfo> {
     let battery: any = {};
 
     try {
@@ -30,16 +46,8 @@ export class DevicePluginWeb extends WebPlugin implements DevicePlugin {
     }
 
     return Promise.resolve({
-      model: uaFields.model,
-      platform: <'web'> 'web',
-      appVersion: '',
-      appBuild: '',
-      osVersion: uaFields.osVersion,
-      manufacturer: navigator.vendor,
-      isVirtual: false,
       batteryLevel: battery.level,
-      isCharging: battery.charging,
-      uuid: this.getUid()
+      isCharging: battery.charging
     });
   }
 
@@ -72,6 +80,18 @@ export class DevicePluginWeb extends WebPlugin implements DevicePlugin {
           uaFields.osVersion = lastParts[lastParts.length - 1].replace(/_/g, '.');
         }
       }
+    }
+
+    if (/android/i.test(_ua)) {
+      uaFields.operatingSystem = 'android';
+    } else if (/iPad|iPhone|iPod/.test(_ua) && !window.MSStream) {
+      uaFields.operatingSystem = 'ios';
+    } else if (/Win/.test(_ua)) {
+      uaFields.operatingSystem = 'windows';
+    } else if (/Mac/i.test(_ua)) {
+      uaFields.operatingSystem = 'mac';
+    } else {
+      uaFields.operatingSystem = 'unknown';
     }
 
     return uaFields;

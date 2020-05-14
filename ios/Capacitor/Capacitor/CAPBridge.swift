@@ -9,7 +9,10 @@ enum BridgeError: Error {
 
 @objc public class CAPBridge : NSObject {
 
-  public static let statusBarTappedNotification = Notification(name: Notification.Name(rawValue: "statusBarTappedNotification"))
+  let tmpWindow = UIWindow.init(frame: UIScreen.main.bounds)
+  let tmpVC = TmpViewController.init()
+  @objc public static let statusBarTappedNotification = Notification(name: Notification.Name(rawValue: "statusBarTappedNotification"))
+  @objc public static let tmpVCAppeared = Notification(name: Notification.Name(rawValue: "tmpViewControllerAppeared"))
   public static var CAP_SITE = "https://capacitor.ionicframework.com/"
   public static var CAP_FILE_START = "/_capacitor_file_"
   public static let CAP_DEFAULT_SCHEME = "capacitor"
@@ -40,6 +43,8 @@ enum BridgeError: Error {
   public var scheme: String
   // Whether the app is active
   private var isActive = true
+  // Wheter to inject the Cordova files
+  private var injectCordovaFiles = false
 
   // Background dispatch queue for plugin calls
   public var dispatchQueue = DispatchQueue(label: "bridge")
@@ -61,6 +66,11 @@ enum BridgeError: Error {
     registerPlugins()
     setupCordovaCompatibility()
     bindObservers()
+    self.tmpWindow.rootViewController = tmpVC
+    self.tmpWindow.makeKeyAndVisible()
+    NotificationCenter.default.addObserver(forName: CAPBridge.tmpVCAppeared.name, object: .none, queue: .none) { _ in
+      self.tmpWindow.isHidden = true
+    }
   }
   
   public func setStatusBarVisible(_ isStatusBarVisible: Bool) {
@@ -78,6 +88,15 @@ enum BridgeError: Error {
     }
     DispatchQueue.main.async {
       bridgeVC.setStatusBarStyle(statusBarStyle)
+    }
+  }
+
+  public func setStatusBarAnimation(_ statusBarAnimation: UIStatusBarAnimation) {
+    guard let bridgeVC = self.viewController as? CAPBridgeViewController else {
+      return
+    }
+    DispatchQueue.main.async {
+      bridgeVC.setStatusBarAnimation(statusBarAnimation)
     }
   }
 
@@ -176,7 +195,7 @@ enum BridgeError: Error {
       self.isActive = true
       appStatePlugin?.fireChange(isActive: self.isActive)
     }
-    NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: OperationQueue.main) { (notification) in
+    NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: OperationQueue.main) { (notification) in
       CAPLog.print("APP INACTIVE")
       self.isActive = false
       appStatePlugin?.fireChange(isActive: self.isActive)
@@ -207,16 +226,6 @@ enum BridgeError: Error {
    * their JS.
    */
   func setupCordovaCompatibility() {
-    var injectCordovaFiles = false
-    var numClasses = UInt32(0);
-    let classes = objc_copyClassList(&numClasses)
-    for i in 0..<Int(numClasses) {
-      let c: AnyClass = classes![i]
-      if class_getSuperclass(c) == CDVPlugin.self {
-        injectCordovaFiles = true
-        break
-      }
-    }
     if injectCordovaFiles {
       exportCordovaJS()
       registerCordovaPlugins()
@@ -246,20 +255,29 @@ enum BridgeError: Error {
    * Register all plugins that have been declared
    */
   func registerPlugins() {
-    var numClasses = UInt32(0);
-    let classes = objc_copyClassList(&numClasses)
+    let classCount = objc_getClassList(nil, 0)
+    let classes = UnsafeMutablePointer<AnyClass?>.allocate(capacity: Int(classCount))
+
+    let releasingClasses = AutoreleasingUnsafeMutablePointer<AnyClass>(classes)
+    let numClasses: Int32 = objc_getClassList(releasingClasses, classCount)
+
     for i in 0..<Int(numClasses) {
-      let c: AnyClass = classes![i]
-      if class_conformsToProtocol(c, CAPBridgedPlugin.self) {
-        let pluginClassName = NSStringFromClass(c)
-        let pluginType = c as! CAPPlugin.Type
-        let bridgeType = c as! CAPBridgedPlugin.Type
-        
-        registerPlugin(pluginClassName, bridgeType.jsName(), pluginType)
+      if let c: AnyClass = classes[i] {
+        if class_getSuperclass(c) == CDVPlugin.self {
+          injectCordovaFiles = true
+        }
+        if class_conformsToProtocol(c, CAPBridgedPlugin.self) {
+          let pluginClassName = NSStringFromClass(c)
+          let pluginType = c as! CAPPlugin.Type
+          let bridgeType = c as! CAPBridgedPlugin.Type
+
+          registerPlugin(pluginClassName, bridgeType.jsName(), pluginType)
+        }
       }
     }
+    classes.deallocate()
   }
-  
+
   /**
    * Register a single plugin.
    */
@@ -418,7 +436,7 @@ enum BridgeError: Error {
         }
       }, error: {(error: CAPPluginCallError?) -> Void in
         let description = error?.error?.localizedDescription ?? ""
-        self.toJsError(error: JSResultError(call: call, message: error!.message, errorMessage: description, error: error!.data))
+        self.toJsError(error: JSResultError(call: call, message: error!.message, errorMessage: description, error: error!.data, code: error!.code))
       })!
       
       plugin.perform(selector, with: pluginCall)
@@ -447,11 +465,10 @@ enum BridgeError: Error {
         return
       }
 
-      dispatchQueue.sync {
-        let arguments = call.options["options"] as! [Any]
-        let pluginCall = CDVInvokedUrlCommand(arguments: arguments, callbackId: call.callbackId, className: plugin.className, methodName: call.method)
-        plugin.perform(selector, with: pluginCall)
-      }
+      let arguments = call.options["options"] as! [Any]
+      let pluginCall = CDVInvokedUrlCommand(arguments: arguments, callbackId: call.callbackId, className: plugin.className, methodName: call.method)
+      plugin.perform(selector, with: pluginCall)
+
     } else {
       CAPLog.print("Error: Cordova Plugin mapping not found")
       return
@@ -578,6 +595,23 @@ enum BridgeError: Error {
 
   public func getLocalUrl() -> String {
     return localUrl!
+  }
+
+  @objc public func presentVC(_ viewControllerToPresent: UIViewController, animated flag: Bool, completion: (() -> Void)? = nil) {
+    if viewControllerToPresent.modalPresentationStyle == .popover {
+      self.viewController.present(viewControllerToPresent, animated: flag, completion: completion)
+    } else {
+      self.tmpWindow.makeKeyAndVisible()
+      self.tmpVC.present(viewControllerToPresent, animated: flag, completion: completion)
+    }
+  }
+
+  @objc public func dismissVC(animated flag: Bool, completion: (() -> Void)? = nil) {
+    if self.tmpWindow.isHidden {
+      self.viewController.dismiss(animated: flag, completion: completion)
+    } else {
+      self.tmpVC.dismiss(animated: flag, completion: completion)
+    }
   }
 
 }
